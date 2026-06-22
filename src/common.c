@@ -1,6 +1,6 @@
-#include "funzioni.h"
+#include "common.h"
 
-// :::::::::::::::::::::::::::::::::::::::::: ERRORI ::::::::::::::::::::::::::::::::::::::::::::::
+// :::::::::::::::::::::::::::::::::::::::::: ERRORS :::::::::::::::::::::::::::::::::::::::::::::::
 void fatal_error(){
     if(errno != 0){
         perror("");
@@ -45,55 +45,55 @@ void block_signals(sigset_t* block, sigset_t* oldset){
     sigaddset(block, SIGUSR2);
     sigaddset(block, SIGTERM);
     sigprocmask(SIG_BLOCK, block, oldset);
-    
+
     fatal_error();
 }
 
 void unblock_signals(sigset_t* oldset){
     sigprocmask(SIG_SETMASK, oldset, NULL);
-    
+
     fatal_error();
 }
 
 
-// ::::::::::::::::::::::::::::::::::::::: ATTRIBUTI ::::::::::::::::::::::::::::::::::::::::::::::
+// :::::::::::::::::::::::::::::::::::::::: ATTRIBUTES ::::::::::::::::::::::::::::::::::::::::::::
 char* get_ip(){
     struct ifaddrs *ifaddr, *ifa;
-    getifaddrs(&ifaddr); // ottiene la lista di interfaccie di rete attive
+    getifaddrs(&ifaddr); // gets the list of active network interfaces
     if(error()){
         freeifaddrs(ifaddr);
-        fprintf(stderr, "Errore: mancanza di un indirizzo IP valido\n");
+        fprintf(stderr, "Error: no valid IP address available\n");
         exit(EXIT_FAILURE);
     }
 
-    for(ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next){ // scorre tutte le interfacce
-        if((ifa->ifa_addr != NULL) && // controlla che l'interfaccia abbia IP
-           ((ifa->ifa_flags & FLAG) == FLAG) && // controlla la presenza di tutti i flag
-           (ifa->ifa_addr->sa_family == AF_INET)){ // controlla che l'indirizzo sia IPv4
-                char* ip = malloc(INET_ADDRSTRLEN); // dimensione standard IPv4
+    for(ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next){ // iterate over every interface
+        if((ifa->ifa_addr != NULL) && // check that the interface has an IP
+           ((ifa->ifa_flags & FLAG) == FLAG) && // check that all the flags are present
+           (ifa->ifa_addr->sa_family == AF_INET)){ // check that the address is IPv4
+                char* ip = malloc(INET_ADDRSTRLEN); // standard IPv4 size
                 fatal_error();
 
                 struct sockaddr_in *sa = (struct sockaddr_in *)ifa->ifa_addr;
-                inet_ntop(AF_INET, &sa->sin_addr, ip, INET_ADDRSTRLEN); // converte l'IP in stringa e lo salva in ip
-                
+                inet_ntop(AF_INET, &sa->sin_addr, ip, INET_ADDRSTRLEN); // convert the IP into a string and store it in ip
+
                 freeifaddrs(ifaddr);
                 return ip;
             }
     }
 
     freeifaddrs(ifaddr);
-    fprintf(stderr, "Errore: mancanza di un indirizzo IP valido\n");
+    fprintf(stderr, "Error: no valid IP address available\n");
     exit(EXIT_FAILURE);
 }
 
 
-// ::::::::::::::::::::::::::::::::::::::: BASE FILE ::::::::::::::::::::::::::::::::::::::::::::::
+// :::::::::::::::::::::::::::::::::::::::: FILE BASICS :::::::::::::::::::::::::::::::::::::::::::
 FILE* file_open(const char* path, const char* mod){
     if(!path) return NULL;
 
     FILE* f = fopen(path, mod);
     if(error()) return NULL;
-    
+
     return f;
 }
 
@@ -105,7 +105,7 @@ int file_close(FILE* f){
 }
 
 
-// ::::::::::::::::::::::::::::::::::::::: CIFRATURA ::::::::::::::::::::::::::::::::::::::::::::::
+// :::::::::::::::::::::::::::::::::::::::: ENCRYPTION ::::::::::::::::::::::::::::::::::::::::::::
 void print_text(const char* text, const size_t len){
     if(!text) return;
 
@@ -124,19 +124,19 @@ Blocks* create_blocks(const char* F, const size_t L){
     bl->blocks = (char**) malloc((bl->size) * sizeof(char*));
     if(error()) return NULL;
 
-    for(size_t i = 0; i < n_blocks; ++i){ // divide in blocchi
+    for(size_t i = 0; i < n_blocks; ++i){ // split into blocks
         bl->blocks[i] = (char*) malloc(LEN_BLOCK * sizeof(char));
         if(error()) return NULL;
         memcpy(bl->blocks[i], F + i * LEN_BLOCK, LEN_BLOCK);
     }
 
-    if(extra > 0){ // ultimo blocco
+    if(extra > 0){ // last block
         bl->blocks[n_blocks] = malloc(LEN_BLOCK * sizeof(char));
         if(error()) return NULL;
         memcpy(bl->blocks[n_blocks], F + n_blocks * LEN_BLOCK, extra);
         memset(bl->blocks[n_blocks] + extra, '\0', LEN_BLOCK - extra); // padding
     }
-    
+
     return bl;
 }
 
@@ -144,7 +144,7 @@ void print_blocks(const Blocks* bl){
     if(!bl || bl->size == 0) return;
 
     for(size_t b = 0; b < bl->size; ++b){
-        printf(">>> Blocco %zu:\n", b + 1);
+        printf(">>> Block %zu:\n", b + 1);
         print_text(bl->blocks[b], LEN_BLOCK);
         printf("\n");
     }
@@ -165,8 +165,8 @@ char* concatenate_blocks(Blocks* bl){
 
 void* modify_blocks(void* args){
     if(!args) return NULL;
-    
-    T_data* targ = (T_data*) args; // Cifratura con lo xor
+
+    T_data* targ = (T_data*) args; // XOR encryption
 
     for(size_t i = targ->start; i < targ->end; ++i){
         unsigned long long tmp;
@@ -185,33 +185,33 @@ int thread_modify_blocks(Blocks* bl, const unsigned short p, const unsigned long
     pthread_t* threads = calloc(p, sizeof(pthread_t));
     if(error()) return 1;
 
-    size_t chunk = bl->size / p; // quanti blocchi ogni thread p si prende in carico (manca l'extra)
+    size_t chunk = bl->size / p; // how many blocks each thread p handles (without the extra)
     size_t extra = bl->size % p;
 
     size_t start = 0;
-    
+
     for(unsigned short i = 0; i < p; ++i){
-        size_t blocchi = (i < extra) ? chunk + 1 : chunk; // blocchi per thread
+        size_t blocks = (i < extra) ? chunk + 1 : chunk; // blocks per thread
 
         T_data* th_data = malloc(sizeof(T_data));
         if(error()) return 1;
         th_data->bl = bl;
         th_data->start = start;
-        th_data->end = start + blocchi;
+        th_data->end = start + blocks;
         th_data->K = &K;
-        
-        printf("Tid: %d, numero blocchi: %zu\n", i, blocchi);
-        if(pthread_create(&threads[i], NULL, &modify_blocks, th_data) != 0) // crea i thread
+
+        printf("Tid: %d, number of blocks: %zu\n", i, blocks);
+        if(pthread_create(&threads[i], NULL, &modify_blocks, th_data) != 0) // create the threads
             return 1;
 
-        start += blocchi;  // aggiorna per il prossimo thread
+        start += blocks;  // update for the next thread
     }
 
-    for(unsigned short i = 0; i < p; ++i){ // aspetta tutti i thread
+    for(unsigned short i = 0; i < p; ++i){ // wait for every thread
         if(pthread_join(threads[i], NULL) != 0)
             return 1;
     }
-    
+
     free(threads);
 
     return 0;
@@ -226,14 +226,14 @@ void free_blocks(Blocks* bl){
 }
 
 
-// ::::::::::::::::::::::::::::::::::::::: SOCKET :::::::::::::::::::::::::::::::::::::::::::::::::
-int recive(const int soc, void* arg, const size_t size){
+// :::::::::::::::::::::::::::::::::::::::::: SOCKET :::::::::::::::::::::::::::::::::::::::::::::::
+int receive(const int soc, void* arg, const size_t size){
     if(!arg || size == 0) return 1;
 
     size_t sent = 0;
-    
+
     while(sent < size){
-        ssize_t sent_now = recv(soc, arg + (sent * size), size - sent, 0); // riceve, (socket, puntatore al buffer, dimensione del buffer, flag)
+        ssize_t sent_now = recv(soc, arg + (sent * size), size - sent, 0); // receive (socket, buffer pointer, buffer size, flags)
         if(error()) return 1;
         sent += sent_now;
     }
@@ -244,9 +244,9 @@ int send_arg(const int soc, const void* arg, const size_t size){
     if(!arg || size == 0) return 1;
 
     size_t sent = 0;
-    
+
     while(sent < size){
-        ssize_t sent_now = send(soc, arg + (sent * size), size - sent, 0); // invia, (socket, puntatore al buffer, dimensione del buffer, flag)
+        ssize_t sent_now = send(soc, arg + (sent * size), size - sent, 0); // send (socket, buffer pointer, buffer size, flags)
         if(error()) return 1;
         sent += sent_now;
     }
