@@ -1,0 +1,12 @@
+# Build artifacts
+bin/
+build/
+*.o
+*.d
+
+# Manually-compiled binaries (gcc ... -o client/server)
+/client
+/server
+
+# Server output + test inputs
+*.txt
